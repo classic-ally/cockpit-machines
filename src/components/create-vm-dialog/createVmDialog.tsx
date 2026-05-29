@@ -200,6 +200,7 @@ interface VmParams {
     userLogin: optString;
     userPassword: optString;
     rootPassword: optString;
+    hostname: optString;
     sshKeys: { value: string }[];
     startVm: boolean;
     extraArguments: optString,
@@ -936,12 +937,14 @@ const CloudInitOptionsRow = ({
     onValueChanged,
     rootPassword,
     userLogin, userPassword,
+    hostname,
     validationFailed,
 } : {
     onValueChanged: OnValueChanged,
     rootPassword: optString,
     userLogin: optString,
     userPassword: optString,
+    hostname: optString,
     validationFailed: ValidationFailed,
 }) => {
     return (
@@ -953,6 +956,14 @@ const CloudInitOptionsRow = ({
                                    userPassword={userPassword}
                                    validationFailed={validationFailed}
                                    onValueChanged={onValueChanged} />
+            <FormGroup fieldId="create-vm-dialog-hostname"
+                       id="create-vm-dialog-hostname-group"
+                       label={_("Hostname")}>
+                <TextInput id='create-vm-dialog-hostname'
+                           value={hostname || ''}
+                           onChange={(_, value) => onValueChanged('hostname', value)} />
+                <FormHelper helperText={_("Leave blank to keep the image default.")} />
+            </FormGroup>
             <DynamicListForm id="create-vm-dialog-ssh-key"
                 emptyStateString={_("No SSH keys specified")}
                 label={_("SSH keys")}
@@ -1267,6 +1278,7 @@ export class CreateVmModal extends React.Component<CreateVmModalProps, CreateVmM
             userPassword: '',
             rootPassword: '',
             userLogin: '',
+            hostname: '',
             accessToken: '',
             offlineToken: '',
             extraArguments: '',
@@ -1486,6 +1498,7 @@ export class CreateVmModal extends React.Component<CreateVmModalProps, CreateVmM
                 userPassword: this.state.userPassword,
                 rootPassword: this.state.rootPassword,
                 userLogin: this.state.userLogin,
+                hostname: this.state.hostname,
                 sshKeys: this.state.sshKeys.map(key => key.value),
                 startVm,
                 accessToken: this.state.accessToken,
@@ -1627,6 +1640,7 @@ export class CreateVmModal extends React.Component<CreateVmModalProps, CreateVmM
                                      rootPassword={this.state.rootPassword}
                                      userLogin={this.state.userLogin}
                                      userPassword={this.state.userPassword}
+                                     hostname={this.state.hostname}
                                      onValueChanged={this.onValueChanged} />
                 }
                 {showExtraArgsRow && this.state.os &&

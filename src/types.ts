@@ -332,6 +332,8 @@ export interface VMMetadata {
     rootPassword: optString;
     userLogin: optString;
     userPassword: optString;
+    hostname: optString;
+    sshKeys: optString;
     extraArguments: optString;
 }
 

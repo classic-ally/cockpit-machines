@@ -94,16 +94,21 @@ def prepare_unattended(args):
 def prepare_cloud_init(args):
     params = []
     if args['sourceType'] == 'cloud' and (args['type'] == 'install' or args['startVm']):
-        params.append("--cloud-init")
         user_data_file = tempfile.NamedTemporaryFile(
             prefix="cockpit-machines-",
             suffix="-user-data",
             mode='w+'
         )
         user_data_file.write("#cloud-config\n")
+        if args.get('hostname'):
+            user_data_file.write(f"hostname: {args['hostname']}\n")
+            user_data_file.write("manage_etc_hosts: true\n")
         if args['userLogin']:
             user_data_file.write("users:\n")
             user_data_file.write(f"  - name: {args['userLogin']}\n")
+            user_data_file.write("    sudo: ALL=(ALL) NOPASSWD:ALL\n")
+            user_data_file.write("    shell: /bin/bash\n")
+            user_data_file.write("    lock_passwd: false\n")
             if 'sshKeys' in args and len(args['sshKeys']) > 0:
                 user_data_file.write("    ssh_authorized_keys:\n")
                 for key in args['sshKeys']:
@@ -121,7 +126,30 @@ def prepare_cloud_init(args):
             user_data_file.write("  expire: False\n")
 
         user_data_file.flush()
-        params.append(f"user-data={user_data_file.name}")
+
+        # Cloud-init's NoCloud datasource requires both user-data AND meta-data
+        # files in the cidata volume. virt-install's built-in metadata generator
+        # returns an empty string, which makes _CloudInitConfig.add_filepair()
+        # skip the meta-data file entirely. The resulting cidata.iso has only
+        # user-data, and cloud-init then fails to apply any of it. Generate a
+        # minimal meta-data with a stable instance-id (the VM name) and pass it
+        # explicitly so the iso ends up complete.
+        meta_data_file = tempfile.NamedTemporaryFile(
+            prefix="cockpit-machines-",
+            suffix="-meta-data",
+            mode='w+'
+        )
+        meta_data_file.write(f"instance-id: {args['vmName']}\n")
+        if args.get('hostname'):
+            meta_data_file.write(f"local-hostname: {args['hostname']}\n")
+        meta_data_file.flush()
+
+        # virt-install expects all --cloud-init sub-options in a single
+        # comma-separated argument: --cloud-init user-data=X,meta-data=Y
+        params.append("--cloud-init")
+        params.append(
+            f"user-data={user_data_file.name},meta-data={meta_data_file.name}"
+        )
 
     yield params
 
@@ -303,6 +331,17 @@ def inject_metadata(xml):
             METADATA += f"<cockpit_machines:user_login>{args['userLogin']}</cockpit_machines:user_login>"
         if args['userPassword']:
             METADATA += f"<cockpit_machines:user_password>{args['userPassword']}</cockpit_machines:user_password>"
+        if args.get('hostname'):
+            METADATA += f"<cockpit_machines:hostname>{args['hostname']}</cockpit_machines:hostname>"
+        # Stash the SSH keys list as a single newline-joined blob so the
+        # 'Install' button on a pending-install VM can carry the keys
+        # through. Without this, domainInstall reads the metadata back, finds
+        # no sshKeys field, and rebuilds the user-data with userLogin only -
+        # the user lands without any way to log in.
+        if 'sshKeys' in args and len(args['sshKeys']) > 0:
+            from xml.sax.saxutils import escape as _xml_escape
+            ssh_keys_blob = "\n".join(args['sshKeys'])
+            METADATA += f"<cockpit_machines:ssh_keys>{_xml_escape(ssh_keys_blob)}</cockpit_machines:ssh_keys>"
 
     if args['extraArguments']:
         METADATA += f"<cockpit_machines:extra_arguments>{args['extraArguments']}</cockpit_machines:extra_arguments>"

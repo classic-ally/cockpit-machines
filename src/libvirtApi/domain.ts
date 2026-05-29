@@ -424,6 +424,7 @@ interface DomainSpec {
     unattended: boolean,
     userLogin: optString,
     userPassword: optString,
+    hostname: optString,
     vmName: string,
     sshKeys: string[],
     extraArguments: optString,
@@ -445,6 +446,7 @@ export async function domainCreate({
     unattended,
     userLogin,
     userPassword,
+    hostname,
     vmName,
     accessToken,
     sshKeys,
@@ -475,6 +477,7 @@ export async function domainCreate({
         unattended,
         userLogin,
         userPassword,
+        hostname,
         vmName,
         sshKeys,
         extraArguments,
@@ -950,6 +953,14 @@ export async function domainInstall({ vm } : { vm: VM }): Promise<string> {
 
     appState.updateVm(vm, { installInProgress: true });
 
+    // sshKeys were stored as a newline-joined blob in the XML metadata to
+    // survive a Reinstall round-trip. Split back into the array shape that
+    // install_machine.py's prepare_cloud_init() expects.
+    const sshKeysBlob = vm.metadata.sshKeys;
+    const sshKeysArray = sshKeysBlob
+        ? sshKeysBlob.split("\n").filter(k => k.trim().length > 0)
+        : [];
+
     const args = JSON.stringify({
         connectionName: vm.connectionName,
         os: vm.metadata.osVariant,
@@ -958,6 +969,8 @@ export async function domainInstall({ vm } : { vm: VM }): Promise<string> {
         rootPassword: vm.metadata.rootPassword,
         userLogin: vm.metadata.userLogin,
         userPassword: vm.metadata.userPassword,
+        hostname: vm.metadata.hostname,
+        sshKeys: sshKeysArray,
         extraArguments: vm.metadata.extraArguments,
         type: "install",
         vmName: vm.name,
