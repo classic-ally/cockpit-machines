@@ -144,11 +144,35 @@ def prepare_cloud_init(args):
             meta_data_file.write(f"local-hostname: {args['hostname']}\n")
         meta_data_file.flush()
 
+        # Force a MAC-based DHCP client identifier. Cloud images (Ubuntu et al.)
+        # default systemd-networkd to dhcp-identifier=duid, which sends an
+        # RFC 4361 client-id distinct from the MAC-based id used by the
+        # initramfs/early-boot DHCP request. A MAC-keyed DHCP server (dnsmasq)
+        # then issues TWO leases for one NIC - one per identifier - so the
+        # guest's address flips mid-boot and looks like it "loses" its IP.
+        # Pinning dhcp-identifier=mac makes every request use the same id, so
+        # the guest holds a single stable lease. Match e* to cover eth0 and
+        # predictable en* names across images.
+        network_config_file = tempfile.NamedTemporaryFile(
+            prefix="cockpit-machines-",
+            suffix="-network-config",
+            mode='w+'
+        )
+        network_config_file.write("version: 2\n")
+        network_config_file.write("ethernets:\n")
+        network_config_file.write("  cockpit-default:\n")
+        network_config_file.write("    match:\n")
+        network_config_file.write("      name: \"e*\"\n")
+        network_config_file.write("    dhcp4: true\n")
+        network_config_file.write("    dhcp-identifier: mac\n")
+        network_config_file.flush()
+
         # virt-install expects all --cloud-init sub-options in a single
         # comma-separated argument: --cloud-init user-data=X,meta-data=Y
         params.append("--cloud-init")
         params.append(
-            f"user-data={user_data_file.name},meta-data={meta_data_file.name}"
+            f"user-data={user_data_file.name},meta-data={meta_data_file.name},"
+            f"network-config={network_config_file.name}"
         )
 
     yield params
